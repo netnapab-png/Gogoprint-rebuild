@@ -12,16 +12,23 @@ export async function GET() {
     const supabase = createAdminClient();
 
     const [
-      { data: coupons,  error: couponsErr },
-      { data: reorders, error: reordersErr },
+      { data: availableCoupons, error: couponsErr },
+      { data: reorders,         error: reordersErr },
     ] = await Promise.all([
-      supabase.from('coupons').select('type, country, is_used'),
+      // Filter is_used=false here so PostgREST only returns unused codes.
+      // Explicit limit overrides the default 1 000-row cap — without it,
+      // high-ID rows (AU) are silently truncated and show as 0.
+      supabase
+        .from('coupons')
+        .select('type, country')
+        .eq('is_used', false)
+        .limit(100000),
       supabase.from('reorders').select('created_at'),
     ]);
 
     if (couponsErr)  throw couponsErr;
     if (reordersErr) throw reordersErr;
-    if (!coupons || !reorders) {
+    if (!availableCoupons || !reorders) {
       return NextResponse.json({ error: 'Failed to load data.' }, { status: 500 });
     }
 
@@ -32,8 +39,8 @@ export async function GET() {
     // Available codes per type
     const countByType: Record<string, number> = {};
     for (const ct of COUPON_TYPES) countByType[ct.type] = 0;
-    for (const c of coupons) {
-      if (!c.is_used) countByType[c.type] = (countByType[c.type] ?? 0) + 1;
+    for (const c of availableCoupons) {
+      countByType[c.type] = (countByType[c.type] ?? 0) + 1;
     }
 
     const availableByType = COUPON_TYPES.map((ct) => ({
@@ -43,10 +50,8 @@ export async function GET() {
     })).sort((a, b) => b.available - a.available);
 
     const availableByCountry: Record<string, number> = {};
-    for (const c of coupons) {
-      if (!c.is_used) {
-        availableByCountry[c.country] = (availableByCountry[c.country] ?? 0) + 1;
-      }
+    for (const c of availableCoupons) {
+      availableByCountry[c.country] = (availableByCountry[c.country] ?? 0) + 1;
     }
 
     const lowStockTypes = availableByType
@@ -65,7 +70,7 @@ export async function GET() {
     return NextResponse.json({
       totalIssued,
       issuedToday,
-      totalAvailable: coupons.filter((c) => !c.is_used).length,
+      totalAvailable: availableCoupons.length,
       availableByCountry,
       availableByType,
       lowStockTypes,
