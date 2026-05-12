@@ -11,70 +11,66 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    const [
-      { data: availableCoupons, error: couponsErr },
-      { data: reorders,         error: reordersErr },
-    ] = await Promise.all([
-      // Filter is_used=false here so PostgREST only returns unused codes.
-      // Explicit limit overrides the default 1 000-row cap — without it,
-      // high-ID rows (AU) are silently truncated and show as 0.
-      supabase
-        .from('coupons')
-        .select('type, country')
-        .eq('is_used', false)
-        .limit(100000),
+    // Use HEAD requests (count: 'exact', head: true) — returns a COUNT(*) from
+    // the database with zero rows transferred, so the server-side max-rows cap
+    // (1 000 on Supabase Cloud) never applies. One request per coupon type,
+    // all fired in parallel.
+    const [typeCountResults, reordersResult, recentResult] = await Promise.all([
+      Promise.all(
+        COUPON_TYPES.map((ct) =>
+          supabase
+            .from('coupons')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_used', false)
+            .eq('type', ct.type)
+            .then(({ count, error }) => {
+              if (error) throw error;
+              return { type: ct.type, country: ct.country, count: count ?? 0 };
+            })
+        )
+      ),
       supabase.from('reorders').select('created_at'),
+      supabase
+        .from('reorders')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5),
     ]);
 
-    if (couponsErr)  throw couponsErr;
-    if (reordersErr) throw reordersErr;
-    if (!availableCoupons || !reorders) {
-      return NextResponse.json({ error: 'Failed to load data.' }, { status: 500 });
-    }
+    if (reordersResult.error)  throw reordersResult.error;
+    if (recentResult.error)    throw recentResult.error;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const totalIssued = reorders.length;
-    const issuedToday = reorders.filter((r) => r.created_at.startsWith(todayStr)).length;
+    const reorders      = reordersResult.data ?? [];
+    const recentReorders = recentResult.data  ?? [];
 
-    // Available codes per type
-    const countByType: Record<string, number> = {};
-    for (const ct of COUPON_TYPES) countByType[ct.type] = 0;
-    for (const c of availableCoupons) {
-      countByType[c.type] = (countByType[c.type] ?? 0) + 1;
-    }
+    const todayStr   = new Date().toISOString().slice(0, 10);
+    const totalIssued  = reorders.length;
+    const issuedToday  = reorders.filter((r) => r.created_at.startsWith(todayStr)).length;
 
-    const availableByType = COUPON_TYPES.map((ct) => ({
-      type:      ct.type,
-      country:   ct.country,
-      available: countByType[ct.type] ?? 0,
-    })).sort((a, b) => b.available - a.available);
+    // Derive all aggregates from the per-type counts (no row fetching needed)
+    const availableByType = typeCountResults
+      .map(({ type, country, count }) => ({ type, country, available: count }))
+      .sort((a, b) => b.available - a.available);
 
     const availableByCountry: Record<string, number> = {};
-    for (const c of availableCoupons) {
-      availableByCountry[c.country] = (availableByCountry[c.country] ?? 0) + 1;
+    for (const { country, count } of typeCountResults) {
+      availableByCountry[country] = (availableByCountry[country] ?? 0) + count;
     }
+
+    const totalAvailable = typeCountResults.reduce((sum, { count }) => sum + count, 0);
 
     const lowStockTypes = availableByType
       .filter((t) => t.available <= 2)
       .map((t) => ({ type: t.type, count: t.available }));
 
-    // Recent 5 reorders
-    const { data: recentReorders, error: recentErr } = await supabase
-      .from('reorders')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
-
-    if (recentErr) throw recentErr;
-
     return NextResponse.json({
       totalIssued,
       issuedToday,
-      totalAvailable: availableCoupons.length,
+      totalAvailable,
       availableByCountry,
       availableByType,
       lowStockTypes,
-      recentReorders: recentReorders ?? [],
+      recentReorders,
     });
   } catch (err) {
     console.error('stats error:', err);
