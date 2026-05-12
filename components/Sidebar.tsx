@@ -1,14 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import type { User } from '@supabase/supabase-js';
 
 const NAV = [
   {
     href: '/',
     label: 'Dashboard',
     isActive: (p: string) => p === '/',
+    adminOnly: false,
     icon: (on: boolean) => (
       <svg className={`w-4 h-4 shrink-0 ${on ? 'text-violet-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -20,6 +23,7 @@ const NAV = [
     href: '/coupons',
     label: 'Issue Coupon',
     isActive: (p: string) => p === '/coupons' || p.startsWith('/issue') || p === '/success',
+    adminOnly: false,
     icon: (on: boolean) => (
       <svg className={`w-4 h-4 shrink-0 ${on ? 'text-violet-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -31,6 +35,7 @@ const NAV = [
     href: '/admin',
     label: 'Records',
     isActive: (p: string) => p === '/admin',
+    adminOnly: false,
     icon: (on: boolean) => (
       <svg className={`w-4 h-4 shrink-0 ${on ? 'text-violet-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -42,6 +47,7 @@ const NAV = [
     href: '/admin/import',
     label: 'Import Codes',
     isActive: (p: string) => p === '/admin/import',
+    adminOnly: true,
     icon: (on: boolean) => (
       <svg className={`w-4 h-4 shrink-0 ${on ? 'text-violet-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
@@ -49,19 +55,67 @@ const NAV = [
       </svg>
     ),
   },
+  {
+    href: '/admin/users',
+    label: 'Users',
+    isActive: (p: string) => p === '/admin/users',
+    adminOnly: true,
+    icon: (on: boolean) => (
+      <svg className={`w-4 h-4 shrink-0 ${on ? 'text-violet-600' : 'text-slate-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // Don't render sidebar on the login page
-  if (pathname === '/login') return null;
+  useEffect(() => {
+    const supabase = createClient();
 
-  const user = session?.user;
-  const initials = user?.name
-    ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user);
+      if (user) {
+        supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+          .then(({ data }) => {
+            if (data?.role === 'admin') setIsAdmin(true);
+          });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) setIsAdmin(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (pathname === '/login' || pathname === '/pending') return null;
+
+  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
+  const email = user?.email || '';
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
+  const initials = displayName
+    ? displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : '?';
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+  }
+
+  const visibleNav = NAV.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <>
@@ -87,7 +141,7 @@ export default function Sidebar() {
           {/* Nav */}
           <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-2 pb-2">Menu</p>
-            {NAV.map(({ href, label, isActive, icon }) => {
+            {visibleNav.map(({ href, label, isActive, icon }) => {
               const active = isActive(pathname);
               return (
                 <Link
@@ -113,11 +167,11 @@ export default function Sidebar() {
           <div className="px-3 py-3 border-t border-slate-100 shrink-0">
             {user ? (
               <div className="flex items-center gap-2.5">
-                {user.image ? (
+                {avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={user.image}
-                    alt={user.name ?? ''}
+                    src={avatarUrl}
+                    alt={displayName}
                     className="w-7 h-7 rounded-full shrink-0"
                     referrerPolicy="no-referrer"
                   />
@@ -127,11 +181,11 @@ export default function Sidebar() {
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold text-slate-800 truncate leading-tight">{user.name}</p>
-                  <p className="text-[10px] text-slate-400 truncate leading-tight">{user.email}</p>
+                  <p className="text-[11px] font-semibold text-slate-800 truncate leading-tight">{displayName}</p>
+                  <p className="text-[10px] text-slate-400 truncate leading-tight">{email}</p>
                 </div>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={handleSignOut}
                   title="Sign out"
                   className="shrink-0 text-slate-400 hover:text-slate-700 transition-colors p-1 rounded"
                 >
@@ -161,7 +215,7 @@ export default function Sidebar() {
             <span className="text-sm font-bold text-slate-900">Gogoprint</span>
           </Link>
           <div className="flex items-center gap-1">
-            {NAV.map(({ href, label, isActive }) => {
+            {visibleNav.map(({ href, label, isActive }) => {
               const active = isActive(pathname);
               return (
                 <Link
@@ -177,7 +231,7 @@ export default function Sidebar() {
             })}
             {user && (
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={handleSignOut}
                 className="ml-1 text-xs text-slate-500 hover:text-slate-800 px-2 py-1.5 rounded-md hover:bg-slate-50 transition-colors"
               >
                 Sign out

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 import { COUPON_TYPE_MAP } from '@/lib/constants';
-import type { Coupon } from '@/lib/types';
 
 interface ImportRow {
   code: string;
@@ -9,10 +8,10 @@ interface ImportRow {
 }
 
 interface ImportResult {
-  added:       number;
-  skipped:     number;
-  errors:      string[];
-  addedCodes:  string[];
+  added:      number;
+  skipped:    number;
+  errors:     string[];
+  addedCodes: string[];
 }
 
 function parseCSV(text: string): ImportRow[] {
@@ -23,7 +22,6 @@ function parseCSV(text: string): ImportRow[] {
 
   if (lines.length === 0) return [];
 
-  // Detect if first line is a header (contains "code" or "type" keywords)
   let startIdx = 0;
   const firstLineLower = lines[0].toLowerCase();
   if (firstLineLower.includes('code') || firstLineLower.includes('type')) {
@@ -31,7 +29,6 @@ function parseCSV(text: string): ImportRow[] {
   }
 
   return lines.slice(startIdx).map((line) => {
-    // Simple CSV split — handles basic quoted fields
     const parts = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g) ?? [];
     const clean = (s: string) => s.trim().replace(/^"|"$/g, '').trim();
     return {
@@ -43,6 +40,22 @@ function parseCSV(text: string): ImportRow[] {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+
+    // Only admins can import
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
+    }
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role, status')
+      .eq('id', user.id)
+      .single();
+    if (!profile || profile.role !== 'admin' || profile.status !== 'active') {
+      return NextResponse.json({ success: false, error: 'Admin access required.' }, { status: 403 });
+    }
+
     const body = await req.json() as { csv?: string };
     if (!body.csv?.trim()) {
       return NextResponse.json({ success: false, error: 'No CSV data provided.' }, { status: 400 });
@@ -53,11 +66,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'No valid rows found in CSV.' }, { status: 400 });
     }
 
-    const data = readDb();
-    const existingCodes = new Set(data.coupons.map((c) => c.code.toUpperCase()));
+    // Fetch existing codes to detect duplicates
+    const { data: existing } = await supabase
+      .from('coupons')
+      .select('code');
+    const existingCodes = new Set((existing ?? []).map((c) => c.code.toUpperCase()));
     const now = new Date().toISOString();
 
     const result: ImportResult = { added: 0, skipped: 0, errors: [], addedCodes: [] };
+    const toInsert: object[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -67,7 +84,6 @@ export async function POST(req: NextRequest) {
         result.errors.push(`Row ${lineNum}: missing coupon code.`);
         continue;
       }
-
       if (!row.type) {
         result.errors.push(`Row ${lineNum}: missing coupon type for code "${row.code}".`);
         continue;
@@ -84,27 +100,24 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const coupon: Coupon = {
-        id:                  data.nextCouponId,
-        code:                row.code,
-        type:                row.type,
-        country:             typeInfo.country,
-        discount_value:      typeInfo.discountValue,
-        discount_type:       typeInfo.discountType,
-        is_used:             0,
-        used_at:             null,
-        assigned_reorder_id: null,
-        created_at:          now,
-      };
-
-      data.coupons.push(coupon);
+      toInsert.push({
+        code:           row.code,
+        type:           row.type,
+        country:        typeInfo.country,
+        discount_value: typeInfo.discountValue,
+        discount_type:  typeInfo.discountType,
+        is_used:        false,
+        created_at:     now,
+      });
       existingCodes.add(row.code.toUpperCase());
-      data.nextCouponId += 1;
-      result.added += 1;
       result.addedCodes.push(row.code);
     }
 
-    writeDb(data);
+    if (toInsert.length > 0) {
+      const { error } = await supabase.from('coupons').insert(toInsert);
+      if (error) throw error;
+      result.added = toInsert.length;
+    }
 
     return NextResponse.json({ success: true, ...result });
   } catch (err) {

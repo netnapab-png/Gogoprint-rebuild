@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readDb } from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 
 function escape(val: string | null | undefined): string {
   const s = val ?? '';
@@ -12,11 +12,14 @@ function escape(val: string | null | undefined): string {
 
 export async function GET() {
   try {
-    const { reorders } = readDb();
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('reorders')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    const sorted = [...reorders].sort((a, b) =>
-      b.created_at.localeCompare(a.created_at)
-    );
+    if (error) throw error;
+    const sorted = data ?? [];
 
     const header = [
       'ID',

@@ -5,7 +5,7 @@ export interface Coupon {
   country: string;
   discount_value: number;
   discount_type: 'fixed' | 'percentage';
-  is_used: number; // 0 = unused, 1 = used
+  is_used: boolean;
   used_at: string | null;
   assigned_reorder_id: number | null;
   created_at: string;
@@ -14,6 +14,7 @@ export interface Coupon {
 export interface Reorder {
   id: number;
   created_at: string;
+  user_id: string | null;
   requested_by: string;
   coupon_id: number;
   coupon_code: string;

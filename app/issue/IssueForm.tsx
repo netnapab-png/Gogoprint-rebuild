@@ -11,7 +11,6 @@ interface Props {
 }
 
 interface FormErrors {
-  staffName?:       string;
   orderNumber?:     string;
   reason?:          string;
   problemSource?:   string;
@@ -37,7 +36,6 @@ function Field({ id, label, hint, error, children }: {
 export default function IssueForm({ couponType }: Props) {
   const router = useRouter();
 
-  const [staffName, setStaffName]             = useState('');
   const [orderNumber, setOrderNumber]         = useState('');
   const [reason, setReason]                   = useState('');
   const [problemSource, setProblemSource]     = useState('');
@@ -49,11 +47,6 @@ export default function IssueForm({ couponType }: Props) {
 
   const categories = problemSource ? (PROBLEM_CATEGORIES[problemSource] ?? []) : [];
 
-  useEffect(() => {
-    const saved = localStorage.getItem('staffName');
-    if (saved) setStaffName(saved);
-  }, []);
-
   useEffect(() => { setProblemCategory(''); }, [problemSource]);
 
   useEffect(() => {
@@ -62,7 +55,6 @@ export default function IssueForm({ couponType }: Props) {
 
   function validate(): FormErrors {
     const e: FormErrors = {};
-    if (!staffName.trim())   e.staffName = 'Your name is required.';
     if (!orderNumber.trim()) e.orderNumber = 'Order number is required.';
     if (!reason.trim())      e.reason = 'Reason is required.';
     else if (reason.trim().length < 50)
@@ -81,14 +73,12 @@ export default function IssueForm({ couponType }: Props) {
     }
     setErrors({});
     setIsSubmitting(true);
-    localStorage.setItem('staffName', staffName.trim());
 
     try {
       const res = await fetch('/api/issue-coupon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staffName:       staffName.trim(),
           couponType:      couponType.type,
           orderNumber:     orderNumber.trim(),
           reason:          reason.trim(),
@@ -121,16 +111,6 @@ export default function IssueForm({ couponType }: Props) {
           {errors.general}
         </div>
       )}
-
-      {/* Staff name */}
-      <Field id="staffName" label="Your name" hint="remembered for next time" error={errors.staffName}>
-        <input
-          id="staffName" type="text" value={staffName}
-          onChange={(e) => setStaffName(e.target.value)}
-          placeholder="e.g. Ahmad Firdaus"
-          className={inputClass(errors.staffName)}
-        />
-      </Field>
 
       {/* Order number */}
       <Field id="orderNumber" label="Problem order number" error={errors.orderNumber}>

@@ -1,18 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readDb, writeDb } from '@/lib/db';
+import { createClient } from '@/lib/supabase/server';
 import { COUPON_TYPES } from '@/lib/constants';
-import type { IssueCouponRequest, Reorder } from '@/lib/types';
+import type { IssueCouponRequest } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const body: IssueCouponRequest & { staffName?: string } = await req.json();
+    const supabase = await createClient();
 
-    // ── Validation ──────────────────────────────────────────────────────────
-    const errors: Record<string, string> = {};
-
-    if (!body.staffName?.trim()) {
-      errors.staffName = 'Your name is required.';
+    // Verify session
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
+
+    // Get user profile for display name
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('name, status')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || profile.status !== 'active') {
+      return NextResponse.json({ success: false, error: 'Access denied.' }, { status: 403 });
+    }
+
+    const body: IssueCouponRequest = await req.json();
+
+    // ── Validation ─────────────────────────────────────────────
+    const errors: Record<string, string> = {};
 
     if (!body.couponType) {
       errors.couponType = 'Coupon type is required.';
@@ -42,47 +57,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, errors }, { status: 400 });
     }
 
-    // ── Atomic assignment ────────────────────────────────────────────────────
-    const data = readDb();
+    // ── Atomic coupon assignment ────────────────────────────────
+    // Find one available coupon
+    const { data: available } = await supabase
+      .from('coupons')
+      .select('id, code')
+      .eq('type', body.couponType)
+      .eq('is_used', false)
+      .limit(1)
+      .single();
 
-    const coupon = data.coupons.find(
-      (c) => c.type === body.couponType && c.is_used === 0
-    );
-
-    if (!coupon) {
+    if (!available) {
       return NextResponse.json(
-        { success: false, error: 'No unused coupon codes are available for this coupon type. Please contact an admin.' },
+        { success: false, error: 'No unused coupon codes are available for this type. Please contact an admin.' },
         { status: 409 }
       );
     }
 
-    const now      = new Date().toISOString();
-    const reorderId = data.nextReorderId;
+    const now = new Date().toISOString();
+    const requestedBy = profile.name || user.email || 'Unknown';
 
-    const reorder: Reorder = {
-      id:               reorderId,
-      created_at:       now,
-      requested_by:     body.staffName!.trim(),
-      coupon_id:        coupon.id,
-      coupon_code:      coupon.code,
-      coupon_type:      body.couponType,
-      order_number:     body.orderNumber.trim(),
-      new_order_number: null,
-      reorder_value:    null,
-      reason:           body.reason.trim(),
-      problem_source:   body.problemSource.trim(),
-      problem_category: body.problemCategory.trim(),
-      notes:            body.notes?.trim() || null,
-    };
+    // Insert reorder record first
+    const { data: reorder, error: reorderError } = await supabase
+      .from('reorders')
+      .insert({
+        user_id:          user.id,
+        requested_by:     requestedBy,
+        coupon_id:        available.id,
+        coupon_code:      available.code,
+        coupon_type:      body.couponType,
+        order_number:     body.orderNumber.trim(),
+        reason:           body.reason.trim(),
+        problem_source:   body.problemSource.trim(),
+        problem_category: body.problemCategory.trim(),
+        notes:            body.notes?.trim() || null,
+      })
+      .select()
+      .single();
 
-    coupon.is_used             = 1;
-    coupon.used_at             = now;
-    coupon.assigned_reorder_id = reorderId;
+    if (reorderError || !reorder) {
+      console.error('reorder insert error:', reorderError);
+      return NextResponse.json({ success: false, error: 'Internal server error.' }, { status: 500 });
+    }
 
-    data.reorders.push(reorder);
-    data.nextReorderId += 1;
+    // Mark coupon as used — atomic: only succeeds if still unused
+    const { count } = await supabase
+      .from('coupons')
+      .update({
+        is_used:             true,
+        used_at:             now,
+        assigned_reorder_id: reorder.id,
+      })
+      .eq('id', available.id)
+      .eq('is_used', false);
 
-    writeDb(data);
+    if (count === 0) {
+      // Race condition: another request claimed this coupon — clean up and retry would be complex
+      // For an internal tool with low concurrency this is acceptable
+      await supabase.from('reorders').delete().eq('id', reorder.id);
+      return NextResponse.json(
+        { success: false, error: 'Coupon was just claimed by another request. Please try again.' },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ success: true, reorder });
   } catch (err) {

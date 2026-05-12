@@ -1,19 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readDb } from '@/lib/db';
-import type { Reorder } from '@/lib/types';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(req: NextRequest) {
   try {
+    const supabase = await createClient();
     const { searchParams } = new URL(req.url);
-    const search  = searchParams.get('search')?.trim().toLowerCase() || '';
-    const type    = searchParams.get('type')?.trim()  || '';
-    const source  = searchParams.get('source')?.trim() || '';
-    const limit   = Math.min(parseInt(searchParams.get('limit') || '100', 10), 500);
+    const search = searchParams.get('search')?.trim().toLowerCase() || '';
+    const type   = searchParams.get('type')?.trim() || '';
+    const source = searchParams.get('source')?.trim() || '';
+    const limit  = Math.min(parseInt(searchParams.get('limit') || '100', 10), 500);
 
-    const { reorders } = readDb();
+    let query = supabase
+      .from('reorders')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-    let filtered: Reorder[] = [...reorders];
+    if (type)   query = query.eq('coupon_type', type);
+    if (source) query = query.eq('problem_source', source);
 
+    const { data: reorders, count, error } = await query;
+
+    if (error) throw error;
+
+    let filtered = reorders ?? [];
+
+    // Client-side text search (order number or coupon code)
     if (search) {
       filtered = filtered.filter(
         (r) =>
@@ -21,16 +33,8 @@ export async function GET(req: NextRequest) {
           r.coupon_code.toLowerCase().includes(search)
       );
     }
-    if (type)   filtered = filtered.filter((r) => r.coupon_type === type);
-    if (source) filtered = filtered.filter((r) => r.problem_source === source);
 
-    // Most recent first
-    filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-    const total = filtered.length;
-    const page  = filtered.slice(0, limit);
-
-    return NextResponse.json({ reorders: page, total });
+    return NextResponse.json({ reorders: filtered, total: search ? filtered.length : (count ?? 0) });
   } catch (err) {
     console.error('reorders GET error:', err);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
