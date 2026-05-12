@@ -4,7 +4,15 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+
+interface MyProfile {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  status: string;
+  avatar_url: string | null;
+}
 
 const NAV = [
   {
@@ -72,29 +80,21 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [profile, setProfile] = useState<MyProfile | null>(null);
 
   useEffect(() => {
+    // Fetch profile via API (uses cookie-based session — same trust model as middleware)
+    fetch('/api/me')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.user) setProfile(data.user);
+      })
+      .catch(() => {});
+
+    // Detect sign-out so we clear state immediately
     const supabase = createClient();
-
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      if (user) {
-        supabase
-          .from('user_profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => {
-            if (data?.role === 'admin') setIsAdmin(true);
-          });
-      }
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) setIsAdmin(false);
+      if (!session?.user) setProfile(null);
     });
 
     return () => subscription.unsubscribe();
@@ -102,9 +102,10 @@ export default function Sidebar() {
 
   if (pathname === '/login' || pathname === '/pending' || pathname === '/no-access') return null;
 
-  const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
-  const email = user?.email || '';
-  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
+  const isAdmin = profile?.role === 'admin';
+  const displayName = profile?.name || profile?.email || '';
+  const email = profile?.email || '';
+  const avatarUrl = profile?.avatar_url ?? undefined;
   const initials = displayName
     ? displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : '?';
@@ -165,7 +166,7 @@ export default function Sidebar() {
 
           {/* User + sign out */}
           <div className="px-3 py-3 border-t border-slate-100 shrink-0">
-            {user ? (
+            {profile ? (
               <div className="flex items-center gap-2.5">
                 {avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -229,7 +230,7 @@ export default function Sidebar() {
                 </Link>
               );
             })}
-            {user && (
+            {profile && (
               <button
                 onClick={handleSignOut}
                 className="ml-1 text-xs text-slate-500 hover:text-slate-800 px-2 py-1.5 rounded-md hover:bg-slate-50 transition-colors"
