@@ -75,7 +75,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- ── BLOCK 3: Australia (9 types × 50 codes = 450 rows) ───────
+-- ── BLOCK 3: Australia (9 types × 100 codes = 900 rows) ──────
 DO $$
 DECLARE
   chars CONSTANT TEXT := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -92,7 +92,7 @@ BEGIN
     ('GGP-AU-CLM',   'GGP AU Claim',    'AU',   0::NUMERIC, 'fixed'),
     ('GGP-AU-NC',    'New Customer AU', 'AU',   0::NUMERIC, 'fixed')
   ) AS t(prefix, ctype, country, dval, dtype)) LOOP
-    FOR i IN 1..50 LOOP
+    FOR i IN 1..100 LOOP
       sfx := '';
       FOR j IN 1..6 LOOP
         sfx := sfx || substr(chars, (floor(random() * 32) + 1)::INT, 1);
