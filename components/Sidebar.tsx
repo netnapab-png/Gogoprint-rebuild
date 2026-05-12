@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 
 const NAV = [
   {
@@ -52,6 +53,15 @@ const NAV = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
+
+  // Don't render sidebar on the login page
+  if (pathname === '/login') return null;
+
+  const user = session?.user;
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
 
   return (
     <>
@@ -99,9 +109,41 @@ export default function Sidebar() {
             })}
           </nav>
 
-          {/* Footer */}
-          <div className="px-4 py-3 border-t border-slate-100 shrink-0">
-            <p className="text-[10px] text-slate-400">Internal tool · v0.1</p>
+          {/* User + sign out */}
+          <div className="px-3 py-3 border-t border-slate-100 shrink-0">
+            {user ? (
+              <div className="flex items-center gap-2.5">
+                {user.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.image}
+                    alt={user.name ?? ''}
+                    className="w-7 h-7 rounded-full shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-bold text-violet-700">{initials}</span>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold text-slate-800 truncate leading-tight">{user.name}</p>
+                  <p className="text-[10px] text-slate-400 truncate leading-tight">{user.email}</p>
+                </div>
+                <button
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  title="Sign out"
+                  className="shrink-0 text-slate-400 hover:text-slate-700 transition-colors p-1 rounded"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-400 px-1">Internal tool · v0.1</p>
+            )}
           </div>
         </div>
       </aside>
@@ -118,7 +160,7 @@ export default function Sidebar() {
             </div>
             <span className="text-sm font-bold text-slate-900">Gogoprint</span>
           </Link>
-          <nav className="flex items-center gap-1">
+          <div className="flex items-center gap-1">
             {NAV.map(({ href, label, isActive }) => {
               const active = isActive(pathname);
               return (
@@ -133,7 +175,15 @@ export default function Sidebar() {
                 </Link>
               );
             })}
-          </nav>
+            {user && (
+              <button
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                className="ml-1 text-xs text-slate-500 hover:text-slate-800 px-2 py-1.5 rounded-md hover:bg-slate-50 transition-colors"
+              >
+                Sign out
+              </button>
+            )}
+          </div>
         </div>
       </header>
     </>
