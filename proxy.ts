@@ -29,28 +29,32 @@ export default async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Routes that don't require any auth check
   const isPublic =
     pathname === '/login' ||
     pathname === '/pending' ||
+    pathname === '/no-access' ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/_next/') ||
     pathname === '/favicon.ico';
 
+  // Skip API routes — they carry their own auth checks
+  const isApiRoute = pathname.startsWith('/api/');
+
   // Unauthenticated → login
-  if (!user && !isPublic) {
+  if (!user && !isPublic && !isApiRoute) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Already logged in and hitting login page → dashboard
+  // Authenticated + hitting login page → dashboard
   if (user && pathname === '/login') {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Authenticated — check profile status & role using service role key to bypass
-  // RLS. The anon+JWT client in middleware context does not reliably carry the
-  // user JWT into PostgREST queries, so auth.uid() evaluates to null inside
-  // RLS policies, causing the profile read to return empty even for valid users.
-  if (user && !isPublic) {
+  // Authenticated + protected page → check profile
+  if (user && !isPublic && !isApiRoute) {
+    // Use service role key to bypass RLS — anon+JWT client does not reliably
+    // forward the JWT to PostgREST queries in the middleware context.
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -63,8 +67,10 @@ export default async function proxy(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
+    // Status checks
     if (profile?.status === 'pending') {
-      return NextResponse.redirect(new URL('/pending', request.url));
+      if (pathname !== '/pending') return NextResponse.redirect(new URL('/pending', request.url));
+      return supabaseResponse;
     }
 
     if (profile?.status === 'deleted') {
@@ -72,9 +78,16 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Admin-only routes
-    const adminOnly = ['/admin/import', '/admin/users'];
-    if (adminOnly.some((r) => pathname.startsWith(r)) && profile?.role !== 'admin') {
+    // Role check — all app pages require admin
+    if (profile?.role !== 'admin') {
+      if (pathname !== '/no-access') {
+        return NextResponse.redirect(new URL('/no-access', request.url));
+      }
+      return supabaseResponse;
+    }
+
+    // Admin on the no-access page → bounce to dashboard
+    if (pathname === '/no-access') {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }

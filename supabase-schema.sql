@@ -9,10 +9,11 @@ CREATE TABLE public.user_profiles (
   email       TEXT NOT NULL,
   name        TEXT,
   avatar_url  TEXT,
-  role        TEXT NOT NULL DEFAULT 'staff'   CHECK (role   IN ('admin', 'staff')),
+  role        TEXT NOT NULL DEFAULT 'user'    CHECK (role   IN ('admin', 'user')),
   status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'deleted')),
   created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ
 );
 
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;

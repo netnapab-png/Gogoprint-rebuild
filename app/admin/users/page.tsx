@@ -7,9 +7,10 @@ interface UserProfile {
   email: string;
   name: string | null;
   avatar_url: string | null;
-  role: 'admin' | 'staff';
+  role: 'admin' | 'user';
   status: 'pending' | 'active' | 'deleted';
   created_at: string;
+  last_login_at: string | null;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -20,8 +21,21 @@ const STATUS_BADGE: Record<string, string> = {
 
 const ROLE_BADGE: Record<string, string> = {
   admin: 'bg-violet-50 text-violet-700 ring-violet-200',
-  staff: 'bg-slate-100 text-slate-600 ring-slate-200',
+  user:  'bg-slate-100 text-slate-600 ring-slate-200',
 };
+
+function fmtDate(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
 
 export default function UsersPage() {
   const [users, setUsers]     = useState<UserProfile[]>([]);
@@ -31,6 +45,7 @@ export default function UsersPage() {
 
   async function load() {
     setLoading(true);
+    setError('');
     const res = await fetch('/api/users');
     if (res.ok) {
       const data = await res.json();
@@ -58,12 +73,23 @@ export default function UsersPage() {
     setSaving(null);
   }
 
-  return (
-    <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 max-w-5xl mx-auto w-full">
+  const pending = users.filter(u => u.status === 'pending');
+  const others  = users.filter(u => u.status !== 'pending');
 
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900">User Management</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Approve and manage team member access.</p>
+  return (
+    <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 max-w-6xl mx-auto w-full">
+
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">User Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Approve and manage team member access.</p>
+        </div>
+        {pending.length > 0 && (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 text-xs font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            {pending.length} pending approval
+          </span>
+        )}
       </div>
 
       {error && (
@@ -77,26 +103,27 @@ export default function UsersPage() {
           <div className="w-7 h-7 border-2 border-slate-200 border-t-violet-600 rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm min-w-[820px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Role</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Joined</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Login</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((user) => {
+              {[...pending, ...others].map((user) => {
                 const initials = user.name
                   ? user.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
                   : user.email[0].toUpperCase();
                 const isSaving = saving === user.id;
 
                 return (
-                  <tr key={user.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={user.id} className={`hover:bg-slate-50/70 transition-colors ${user.status === 'pending' ? 'bg-amber-50/30' : ''}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {user.avatar_url ? (
@@ -123,9 +150,8 @@ export default function UsersPage() {
                         {user.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">
-                      {new Date(user.created_at).toLocaleDateString('en-GB')}
-                    </td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(user.created_at)}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{fmtDateTime(user.last_login_at)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         {isSaving ? (
@@ -161,7 +187,7 @@ export default function UsersPage() {
                               onChange={(e) => update(user.id, { role: e.target.value })}
                               className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
                             >
-                              <option value="staff">Staff</option>
+                              <option value="user">User</option>
                               <option value="admin">Admin</option>
                             </select>
                           </>
@@ -173,7 +199,7 @@ export default function UsersPage() {
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
                     No users found.
                   </td>
                 </tr>

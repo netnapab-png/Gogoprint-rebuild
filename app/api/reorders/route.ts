@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAdmin } from '@/lib/supabase/require-admin';
 
 export async function GET(req: NextRequest) {
   try {
+    if (!await requireAdmin()) {
+      return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+    }
+
     const supabase = createAdminClient();
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search')?.trim().toLowerCase() || '';

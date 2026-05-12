@@ -100,7 +100,7 @@ export default function Sidebar() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (pathname === '/login' || pathname === '/pending') return null;
+  if (pathname === '/login' || pathname === '/pending' || pathname === '/no-access') return null;
 
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
   const email = user?.email || '';

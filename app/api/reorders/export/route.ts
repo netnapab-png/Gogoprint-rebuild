@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAdmin } from '@/lib/supabase/require-admin';
 
 function escape(val: string | null | undefined): string {
   const s = val ?? '';
@@ -12,6 +13,10 @@ function escape(val: string | null | undefined): string {
 
 export async function GET() {
   try {
+    if (!await requireAdmin()) {
+      return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+    }
+
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from('reorders')

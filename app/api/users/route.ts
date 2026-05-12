@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-
-async function requireAdmin() {
-  const sessionClient = await createClient();
-  const { data: { user } } = await sessionClient.auth.getUser();
-  if (!user) return null;
-
-  const adminClient = createAdminClient();
-  const { data: profile } = await adminClient
-    .from('user_profiles')
-    .select('role, status')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin' || profile.status !== 'active') return null;
-  return user;
-}
+import { requireAdmin } from '@/lib/supabase/require-admin';
 
 // GET /api/users — list all user profiles (admin only)
 export async function GET() {
@@ -27,7 +11,7 @@ export async function GET() {
 
     const { data: users, error } = await createAdminClient()
       .from('user_profiles')
-      .select('id, email, name, avatar_url, role, status, created_at')
+      .select('id, email, name, avatar_url, role, status, created_at, last_login_at')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -47,7 +31,7 @@ export async function PATCH(req: NextRequest) {
 
     const { id, role, status } = await req.json() as {
       id: string;
-      role?: 'admin' | 'staff';
+      role?: 'admin' | 'user';
       status?: 'pending' | 'active' | 'deleted';
     };
 
