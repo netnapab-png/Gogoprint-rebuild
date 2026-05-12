@@ -172,7 +172,7 @@ export default function CouponStockChart() {
                 dataKey="available"
                 position="right"
                 style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
-                formatter={(v: number) => v === 0 ? 'empty' : v}
+                formatter={(v) => Number(v) === 0 ? 'empty' : v}
               />
             </Bar>
           </BarChart>
