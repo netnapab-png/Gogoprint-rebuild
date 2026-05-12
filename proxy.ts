@@ -41,6 +41,13 @@ export default async function proxy(request: NextRequest) {
   // Skip API routes — they carry their own auth checks
   const isApiRoute = pathname.startsWith('/api/');
 
+  // Pages only admins may visit
+  const isAdminOnlyPath =
+    pathname === '/admin/users' ||
+    pathname.startsWith('/admin/users/') ||
+    pathname === '/admin/import' ||
+    pathname.startsWith('/admin/import/');
+
   // Unauthenticated → login
   if (!user && !isPublic && !isApiRoute) {
     return NextResponse.redirect(new URL('/login', request.url));
@@ -53,8 +60,6 @@ export default async function proxy(request: NextRequest) {
 
   // Authenticated + protected page → check profile
   if (user && !isPublic && !isApiRoute) {
-    // Use service role key to bypass RLS — anon+JWT client does not reliably
-    // forward the JWT to PostgREST queries in the middleware context.
     const adminClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -67,27 +72,25 @@ export default async function proxy(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
-    // Status checks
+    // Pending → waiting room
     if (profile?.status === 'pending') {
       if (pathname !== '/pending') return NextResponse.redirect(new URL('/pending', request.url));
       return supabaseResponse;
     }
 
+    // Deleted → sign out and boot to login
     if (profile?.status === 'deleted') {
       await supabase.auth.signOut();
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Role check — all app pages require admin
-    if (profile?.role !== 'admin') {
-      if (pathname !== '/no-access') {
-        return NextResponse.redirect(new URL('/no-access', request.url));
-      }
-      return supabaseResponse;
+    // Admin-only pages — non-admins get the "no access" screen for this page
+    if (isAdminOnlyPath && profile?.role !== 'admin') {
+      return NextResponse.redirect(new URL('/no-access', request.url));
     }
 
-    // Admin on the no-access page → bounce to dashboard
-    if (pathname === '/no-access') {
+    // Admin landing on /no-access → bounce to dashboard
+    if (pathname === '/no-access' && profile?.role === 'admin') {
       return NextResponse.redirect(new URL('/', request.url));
     }
   }

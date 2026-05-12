@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireAdmin } from '@/lib/supabase/require-admin';
+import { requireActive } from '@/lib/supabase/require-active';
 import { COUPON_TYPES } from '@/lib/constants';
 
 export async function GET() {
   try {
-    if (!await requireAdmin()) {
-      return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+    if (!await requireActive()) {
+      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
     }
 
     const supabase = createAdminClient();
