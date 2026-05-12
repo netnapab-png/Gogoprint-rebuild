@@ -21,23 +21,21 @@ ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_read_own" ON public.user_profiles
   FOR SELECT USING (auth.uid() = id);
 
--- Admins can read all profiles
-CREATE POLICY "admins_read_all" ON public.user_profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND role = 'admin' AND status = 'active'
-    )
-  );
+-- NOTE: No recursive admin policy here. Admin reads/writes use the service role
+-- key in API routes (createAdminClient), which bypasses RLS entirely.
 
--- Admins can update any profile (for approval workflow)
-CREATE POLICY "admins_update_all" ON public.user_profiles
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND role = 'admin' AND status = 'active'
-    )
-  );
+-- ── Security-definer helper to check the current user's profile ───────────
+-- Used by coupons/reorders policies to avoid recursive RLS evaluation.
+CREATE OR REPLACE FUNCTION public.get_my_profile_field(field_name text)
+RETURNS text AS $$
+  SELECT CASE
+    WHEN field_name = 'status' THEN status
+    WHEN field_name = 'role'   THEN role
+    ELSE NULL
+  END
+  FROM public.user_profiles
+  WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Auto-create profile when a new user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -74,28 +72,17 @@ CREATE TABLE public.coupons (
 
 ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
 
+-- Use the security-definer function to avoid recursive policy evaluation
 CREATE POLICY "active_users_read_coupons" ON public.coupons
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND status = 'active'
-    )
-  );
+  FOR SELECT USING (public.get_my_profile_field('status') = 'active');
 
 CREATE POLICY "active_users_update_coupons" ON public.coupons
-  FOR UPDATE USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND status = 'active'
-    )
-  );
+  FOR UPDATE USING (public.get_my_profile_field('status') = 'active');
 
 CREATE POLICY "admins_insert_coupons" ON public.coupons
   FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND role = 'admin' AND status = 'active'
-    )
+    public.get_my_profile_field('status') = 'active' AND
+    public.get_my_profile_field('role')   = 'admin'
   );
 
 -- ── reorders ─────────────────────────────────────────────────
@@ -119,17 +106,7 @@ CREATE TABLE public.reorders (
 ALTER TABLE public.reorders ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "active_users_read_reorders" ON public.reorders
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND status = 'active'
-    )
-  );
+  FOR SELECT USING (public.get_my_profile_field('status') = 'active');
 
 CREATE POLICY "active_users_insert_reorders" ON public.reorders
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles
-      WHERE id = auth.uid() AND status = 'active'
-    )
-  );
+  FOR INSERT WITH CHECK (public.get_my_profile_field('status') = 'active');

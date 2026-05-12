@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { COUPON_TYPES } from '@/lib/constants';
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
 
-    const [{ data: coupons }, { data: reorders }] = await Promise.all([
+    const [
+      { data: coupons,  error: couponsErr },
+      { data: reorders, error: reordersErr },
+    ] = await Promise.all([
       supabase.from('coupons').select('type, country, is_used'),
       supabase.from('reorders').select('created_at'),
     ]);
 
+    if (couponsErr)  throw couponsErr;
+    if (reordersErr) throw reordersErr;
     if (!coupons || !reorders) {
       return NextResponse.json({ error: 'Failed to load data.' }, { status: 500 });
     }
@@ -44,11 +49,13 @@ export async function GET() {
       .map((t) => ({ type: t.type, count: t.available }));
 
     // Recent 5 reorders
-    const { data: recentReorders } = await supabase
+    const { data: recentReorders, error: recentErr } = await supabase
       .from('reorders')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(5);
+
+    if (recentErr) throw recentErr;
 
     return NextResponse.json({
       totalIssued,

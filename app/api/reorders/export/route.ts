@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 function escape(val: string | null | undefined): string {
   const s = val ?? '';
@@ -12,7 +12,7 @@ function escape(val: string | null | undefined): string {
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from('reorders')
       .select('*')

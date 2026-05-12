@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
-async function requireAdmin(supabase: SupabaseClient) {
-  const { data: { user } } = await supabase.auth.getUser();
+async function requireAdmin() {
+  const sessionClient = await createClient();
+  const { data: { user } } = await sessionClient.auth.getUser();
   if (!user) return null;
-  const { data: profile } = await supabase
+
+  const adminClient = createAdminClient();
+  const { data: profile } = await adminClient
     .from('user_profiles')
     .select('role, status')
     .eq('id', user.id)
     .single();
+
   if (!profile || profile.role !== 'admin' || profile.status !== 'active') return null;
   return user;
 }
@@ -17,12 +21,11 @@ async function requireAdmin(supabase: SupabaseClient) {
 // GET /api/users — list all user profiles (admin only)
 export async function GET() {
   try {
-    const supabase = await createClient();
-    if (!await requireAdmin(supabase)) {
+    if (!await requireAdmin()) {
       return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
     }
 
-    const { data: users, error } = await supabase
+    const { data: users, error } = await createAdminClient()
       .from('user_profiles')
       .select('id, email, name, avatar_url, role, status, created_at')
       .order('created_at', { ascending: false });
@@ -38,8 +41,7 @@ export async function GET() {
 // PATCH /api/users — update role or status (admin only)
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    if (!await requireAdmin(supabase)) {
+    if (!await requireAdmin()) {
       return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
     }
 
@@ -55,7 +57,7 @@ export async function PATCH(req: NextRequest) {
     if (role)   updates.role   = role;
     if (status) updates.status = status;
 
-    const { error } = await supabase
+    const { error } = await createAdminClient()
       .from('user_profiles')
       .update(updates)
       .eq('id', id);
