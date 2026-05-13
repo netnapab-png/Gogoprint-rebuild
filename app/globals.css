@@ -32,11 +32,7 @@ html {
   }
 }
 
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.2s ease-out both;
-  }
-
+@layer components {
   /* Card shadow consistent with SaaS UI */
   .card {
     @apply bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5;
@@ -56,7 +52,7 @@ html {
            ring-1 ring-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
-  /* Form input */
+  /* Form input — utility overrides (pl-*, py-*, text-*) in HTML always win */
   .input {
     @apply w-full border border-slate-200 rounded-lg px-3.5 py-2.5 text-sm text-slate-900
            placeholder:text-slate-400 bg-white
@@ -71,6 +67,12 @@ html {
   /* Label */
   .label {
     @apply block text-sm font-medium text-slate-700 mb-1.5;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out both;
   }
 }
 
