@@ -163,8 +163,9 @@ export default function AdminPage() {
         )}
 
         {/* ── Filters ──────────────────────────────────────────── */}
-        <div className="card p-3 mb-5 flex flex-col sm:flex-row gap-2.5">
-          <div className="relative flex-1">
+        <div className="card p-3 mb-5 flex flex-col gap-2.5 lg:flex-row lg:items-center">
+          {/* Search — always stretches to fill */}
+          <div className="relative flex-1 min-w-0">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none"
               fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -175,37 +176,40 @@ export default function AdminPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search order number or coupon code…"
-              className="input pl-9 py-2 text-xs"
+              className="input pl-9 py-2 text-xs w-full"
             />
           </div>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="input py-2 text-xs min-w-[160px] flex-none"
-          >
-            <option value="">All coupon types</option>
-            {COUPON_TYPES.map((ct) => (
-              <option key={ct.type} value={ct.type}>{ct.type}</option>
-            ))}
-          </select>
-          <select
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value)}
-            className="input py-2 text-xs min-w-[160px] flex-none"
-          >
-            <option value="">All problem sources</option>
-            {PROBLEM_SOURCES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          {hasFilters && (
-            <button
-              onClick={handleReset}
-              className="text-xs text-slate-500 hover:text-slate-800 font-medium px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap"
+          {/* Selects row — side-by-side on all widths, wraps cleanly if needed */}
+          <div className="flex gap-2.5 flex-wrap sm:flex-nowrap lg:flex-none lg:contents">
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="input py-2 text-xs flex-1 sm:flex-none sm:w-48 min-w-0"
             >
-              Clear
-            </button>
-          )}
+              <option value="">All coupon types</option>
+              {COUPON_TYPES.map((ct) => (
+                <option key={ct.type} value={ct.type}>{ct.type}</option>
+              ))}
+            </select>
+            <select
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
+              className="input py-2 text-xs flex-1 sm:flex-none sm:w-48 min-w-0"
+            >
+              <option value="">All problem sources</option>
+              {PROBLEM_SOURCES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {hasFilters && (
+              <button
+                onClick={handleReset}
+                className="text-xs text-slate-500 hover:text-slate-800 font-medium px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors whitespace-nowrap shrink-0"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Table ────────────────────────────────────────────── */}
