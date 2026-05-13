@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireActive } from '@/lib/supabase/require-active';
+import { getSessionProfile, resolveCountries } from '@/lib/supabase/get-session-profile';
+import { COUPON_TYPES } from '@/lib/constants';
+
+const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
 
 function escape(val: string | null | undefined): string {
   const s = val ?? '';
-  // Wrap in quotes if the value contains comma, quote, or newline
   if (s.includes(',') || s.includes('"') || s.includes('\n')) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -13,31 +15,41 @@ function escape(val: string | null | undefined): string {
 
 export async function GET() {
   try {
-    if (!await requireActive()) {
+    const session = await getSessionProfile();
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
     }
 
+    const { user, profile } = session;
+    const userCountries = resolveCountries(profile, ALL_COUNTRIES);
+    const allowedTypes  = COUPON_TYPES
+      .filter((ct) => userCountries.includes(ct.country))
+      .map((ct) => ct.type);
+
+    if (allowedTypes.length === 0) {
+      return NextResponse.json({ error: 'No countries assigned.' }, { status: 403 });
+    }
+
     const supabase = createAdminClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('reorders')
       .select('*')
+      .in('coupon_type', allowedTypes)
       .order('created_at', { ascending: false });
 
+    // Regular users only export their own records
+    if (profile.role !== 'admin') {
+      query = query.eq('user_id', user.id);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     const sorted = data ?? [];
 
     const header = [
-      'ID',
-      'Date/Time',
-      'Requested By',
-      'Coupon Code',
-      'Coupon Type',
-      'Order Number',
-      'New Order Number',
-      'Reason',
-      'Problem Source',
-      'Problem Category',
-      'Notes',
+      'ID', 'Date/Time', 'Requested By', 'Coupon Code', 'Coupon Type',
+      'Order Number', 'New Order Number', 'Reason', 'Problem Source',
+      'Problem Category', 'Notes',
     ].join(',');
 
     const rows = sorted.map((r) =>
@@ -56,7 +68,7 @@ export async function GET() {
       ].join(',')
     );
 
-    const csv = [header, ...rows].join('\r\n');
+    const csv      = [header, ...rows].join('\r\n');
     const filename = `coupon-records-${new Date().toISOString().slice(0, 10)}.csv`;
 
     return new NextResponse(csv, {

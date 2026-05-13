@@ -11,6 +11,7 @@ CREATE TABLE public.user_profiles (
   avatar_url  TEXT,
   role        TEXT NOT NULL DEFAULT 'user'    CHECK (role   IN ('admin', 'user')),
   status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'deleted')),
+  countries   TEXT[] NOT NULL DEFAULT '{}',
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW(),
   last_login_at TIMESTAMPTZ

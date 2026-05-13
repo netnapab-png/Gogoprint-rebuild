@@ -10,7 +10,7 @@ export async function GET() {
 
     const { data: profile } = await createAdminClient()
       .from('user_profiles')
-      .select('id, name, email, role, status, avatar_url')
+      .select('id, name, email, role, status, avatar_url, countries')
       .eq('id', user.id)
       .single();
 

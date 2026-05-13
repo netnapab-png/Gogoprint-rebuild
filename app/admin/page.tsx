@@ -25,9 +25,19 @@ export default function AdminPage() {
   const [filterType, setFilterType]     = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [isExporting, setIsExporting]   = useState(false);
+  const [isAdmin, setIsAdmin]           = useState(false);
+  const [scope, setScope]               = useState<'all' | 'mine'>('all');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchReorders = useCallback(async (s: string, t: string, src: string) => {
+  // Fetch the current user's role once
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.user?.role === 'admin') setIsAdmin(true); })
+      .catch(() => {});
+  }, []);
+
+  const fetchReorders = useCallback(async (s: string, t: string, src: string, sc: string) => {
     setLoading(true);
     setError('');
     try {
@@ -35,6 +45,7 @@ export default function AdminPage() {
       if (s)   params.set('search', s);
       if (t)   params.set('type', t);
       if (src) params.set('source', src);
+      params.set('scope', sc);
       params.set('limit', '200');
       const res = await fetch(`/api/reorders?${params}`);
       if (!res.ok) throw new Error('Failed to fetch');
@@ -48,13 +59,13 @@ export default function AdminPage() {
     }
   }, []);
 
-  useEffect(() => { fetchReorders('', '', ''); }, [fetchReorders]);
+  useEffect(() => { fetchReorders('', '', '', scope); }, [fetchReorders, scope]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchReorders(search, filterType, filterSource), 300);
+    debounceRef.current = setTimeout(() => fetchReorders(search, filterType, filterSource, scope), 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, filterType, filterSource, fetchReorders]);
+  }, [search, filterType, filterSource, scope, fetchReorders]);
 
   function handleReset() {
     setSearch(''); setFilterType(''); setFilterSource('');
@@ -124,6 +135,32 @@ export default function AdminPage() {
       </div>
 
       <div className="flex-1 px-6 lg:px-8 py-6">
+
+        {/* ── Scope toggle (admins only) ────────────────────────── */}
+        {isAdmin && (
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg w-fit mb-5">
+            <button
+              onClick={() => setScope('all')}
+              className={`text-xs font-medium px-3.5 py-1.5 rounded-md transition-all ${
+                scope === 'all'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              All Records
+            </button>
+            <button
+              onClick={() => setScope('mine')}
+              className={`text-xs font-medium px-3.5 py-1.5 rounded-md transition-all ${
+                scope === 'mine'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              My Records
+            </button>
+          </div>
+        )}
 
         {/* ── Filters ──────────────────────────────────────────── */}
         <div className="card p-3 mb-5 flex flex-col sm:flex-row gap-2.5">

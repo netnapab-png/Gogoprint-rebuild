@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { COUPON_TYPES } from '@/lib/constants';
+import { resolveCountries } from '@/lib/supabase/get-session-profile';
 import type { IssueCouponRequest } from '@/lib/types';
+
+const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: profileErr } = await supabase
       .from('user_profiles')
-      .select('name, status')
+      .select('name, status, role, countries')
       .eq('id', user.id)
       .single();
 
@@ -52,6 +55,20 @@ export async function POST(req: NextRequest) {
 
     if (Object.keys(errors).length > 0) {
       return NextResponse.json({ success: false, errors }, { status: 400 });
+    }
+
+    // ── Country permission check ───────────────────────────────
+    const couponTypeInfo = COUPON_TYPES.find((ct) => ct.type === body.couponType)!;
+    const userCountries  = resolveCountries(
+      { id: user.id, role: profile.role, status: profile.status, countries: profile.countries ?? [] },
+      ALL_COUNTRIES
+    );
+
+    if (!userCountries.includes(couponTypeInfo.country)) {
+      return NextResponse.json(
+        { success: false, error: `You are not authorised to issue ${couponTypeInfo.country} coupons.` },
+        { status: 403 }
+      );
     }
 
     // ── Find an available coupon ────────────────────────────────
@@ -93,7 +110,6 @@ export async function POST(req: NextRequest) {
 
     if (reorderError || !reorder) {
       console.error('reorder insert error:', JSON.stringify(reorderError));
-      // Surface the DB error message to aid debugging (internal tool)
       const detail = reorderError?.message ?? 'Unknown error';
       const code   = reorderError?.code   ?? '';
       return NextResponse.json(
@@ -111,7 +127,6 @@ export async function POST(req: NextRequest) {
       .select('id');
 
     if (updateError) {
-      // Log but don't fail — reorder is already saved; coupon will be cleaned up manually
       console.error('coupon update error:', JSON.stringify(updateError));
     }
 

@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { COUPON_TYPES, COUNTRIES } from '@/lib/constants';
 import type { CouponTypeInfo } from '@/lib/types';
@@ -53,8 +56,30 @@ function CouponCard({ ct }: { ct: CouponTypeInfo }) {
 }
 
 export default function CouponsPage() {
+  // null = loading; string[] = resolved
+  const [userCountries, setUserCountries] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        const c: string[]  = d?.user?.countries ?? [];
+        const role: string = d?.user?.role ?? 'user';
+        // Admin with no countries defaults to all (migration safety)
+        setUserCountries(role === 'admin' && c.length === 0 ? ['MY', 'SG', 'AU'] : c);
+      })
+      .catch(() => setUserCountries([]));
+  }, []);
+
   const knownCodes = new Set(COUNTRIES.map((c) => c.code));
   const otherTypes = COUPON_TYPES.filter((ct) => !knownCodes.has(ct.country));
+
+  // While loading, show all countries (spinner-free, layout stable)
+  const visibleCountries = userCountries === null
+    ? COUNTRIES
+    : COUNTRIES.filter((c) => userCountries.includes(c.code));
+
+  const noCountries = userCountries !== null && userCountries.length === 0;
 
   return (
     <div className="flex-1 flex flex-col animate-fade-in">
@@ -73,30 +98,47 @@ export default function CouponsPage() {
 
       <main className="flex-1 px-6 lg:px-8 py-7 max-w-6xl w-full mx-auto">
 
-        {COUNTRIES.map((country) => {
-          const types = COUPON_TYPES.filter((ct) => ct.country === country.code);
-          if (types.length === 0) return null;
-          return (
-            <section key={country.code} className="mb-9">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg leading-none">{country.flag}</span>
-                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">{country.name}</h2>
-                <span className="text-xs text-slate-300 ml-1">· {types.length} types</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                {types.map((ct) => <CouponCard key={ct.type} ct={ct} />)}
-              </div>
-            </section>
-          );
-        })}
-
-        {otherTypes.length > 0 && (
-          <section className="mb-9">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Other</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {otherTypes.map((ct) => <CouponCard key={ct.type} ct={ct} />)}
+        {noCountries ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mb-4">
+              <svg className="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
-          </section>
+            <h2 className="text-base font-semibold text-slate-800 mb-1">No countries assigned</h2>
+            <p className="text-sm text-slate-500 max-w-xs">
+              You don&apos;t have access to any country yet. Please ask an admin to assign countries to your account.
+            </p>
+          </div>
+        ) : (
+          <>
+            {visibleCountries.map((country) => {
+              const types = COUPON_TYPES.filter((ct) => ct.country === country.code);
+              if (types.length === 0) return null;
+              return (
+                <section key={country.code} className="mb-9">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-lg leading-none">{country.flag}</span>
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">{country.name}</h2>
+                    <span className="text-xs text-slate-300 ml-1">· {types.length} types</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {types.map((ct) => <CouponCard key={ct.type} ct={ct} />)}
+                  </div>
+                </section>
+              );
+            })}
+
+            {otherTypes.length > 0 && (
+              <section className="mb-9">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Other</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {otherTypes.map((ct) => <CouponCard key={ct.type} ct={ct} />)}
+                </div>
+              </section>
+            )}
+          </>
         )}
       </main>
     </div>

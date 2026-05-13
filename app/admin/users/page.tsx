@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 
+const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
+const COUNTRY_FLAG: Record<string, string> = { MY: '🇲🇾', SG: '🇸🇬', AU: '🇦🇺' };
+
 interface UserProfile {
   id: string;
   email: string;
@@ -9,6 +12,7 @@ interface UserProfile {
   avatar_url: string | null;
   role: 'admin' | 'user';
   status: 'pending' | 'active' | 'deleted';
+  countries: string[];
   created_at: string;
   last_login_at: string | null;
 }
@@ -37,6 +41,64 @@ function fmtDateTime(iso: string | null) {
   });
 }
 
+// Inline country toggle — shown per-user row
+function CountryToggle({ userId, countries, onSave }: {
+  userId: string;
+  countries: string[];
+  onSave: (id: string, countries: string[]) => Promise<void>;
+}) {
+  const [local, setLocal]   = useState<string[]>(countries);
+  const [dirty, setDirty]   = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function toggle(code: string) {
+    setLocal((prev) => {
+      const next = prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code];
+      setDirty(true);
+      return next;
+    });
+  }
+
+  async function save() {
+    setSaving(true);
+    await onSave(userId, local);
+    setDirty(false);
+    setSaving(false);
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {ALL_COUNTRIES.map((code) => {
+        const active = local.includes(code);
+        return (
+          <button
+            key={code}
+            onClick={() => toggle(code)}
+            title={active ? `Remove ${code}` : `Add ${code}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border transition-all ${
+              active
+                ? 'bg-violet-100 text-violet-700 border-violet-300'
+                : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-slate-300'
+            }`}
+          >
+            <span>{COUNTRY_FLAG[code]}</span>
+            {code}
+          </button>
+        );
+      })}
+      {dirty && (
+        <button
+          onClick={save}
+          disabled={saving}
+          className="ml-1 text-[11px] font-semibold text-white bg-violet-600 hover:bg-violet-700 px-2.5 py-0.5 rounded-md transition-colors disabled:opacity-60"
+        >
+          {saving ? '…' : 'Save'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const [users, setUsers]     = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +120,7 @@ export default function UsersPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function update(id: string, patch: { role?: string; status?: string }) {
+  async function update(id: string, patch: { role?: string; status?: string; countries?: string[] }) {
     setSaving(id);
     const res = await fetch('/api/users', {
       method: 'PATCH',
@@ -73,16 +135,26 @@ export default function UsersPage() {
     setSaving(null);
   }
 
+  async function updateCountries(id: string, countries: string[]) {
+    const res = await fetch('/api/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, countries }),
+    });
+    if (!res.ok) setError('Failed to save countries.');
+    else await load();
+  }
+
   const pending = users.filter(u => u.status === 'pending');
   const others  = users.filter(u => u.status !== 'pending');
 
   return (
-    <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 max-w-6xl mx-auto w-full">
+    <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 max-w-7xl mx-auto w-full">
 
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">User Management</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Approve and manage team member access.</p>
+          <p className="text-sm text-slate-500 mt-0.5">Approve, assign countries, and manage team member access.</p>
         </div>
         {pending.length > 0 && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 text-xs font-semibold">
@@ -104,12 +176,13 @@ export default function UsersPage() {
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm min-w-[820px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">User</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Role</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Countries</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Joined</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Last Login</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions</th>
@@ -149,6 +222,13 @@ export default function UsersPage() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ${ROLE_BADGE[user.role]}`}>
                         {user.role}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <CountryToggle
+                        userId={user.id}
+                        countries={user.countries ?? []}
+                        onSave={updateCountries}
+                      />
                     </td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{fmtDate(user.created_at)}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{fmtDateTime(user.last_login_at)}</td>
@@ -199,7 +279,7 @@ export default function UsersPage() {
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-sm">
                     No users found.
                   </td>
                 </tr>

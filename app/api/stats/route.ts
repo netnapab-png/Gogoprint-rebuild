@@ -1,23 +1,43 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { requireActive } from '@/lib/supabase/require-active';
+import { getSessionProfile, resolveCountries } from '@/lib/supabase/get-session-profile';
 import { COUPON_TYPES } from '@/lib/constants';
+
+const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
 
 export async function GET() {
   try {
-    if (!await requireActive()) {
+    const session = await getSessionProfile();
+    if (!session) {
       return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    }
+
+    const { user, profile } = session;
+    const userCountries = resolveCountries(profile, ALL_COUNTRIES);
+
+    if (userCountries.length === 0) {
+      return NextResponse.json({
+        totalIssued: 0,
+        issuedToday: 0,
+        totalAvailable: 0,
+        availableByCountry: {},
+        availableByType: [],
+        lowStockTypes: [],
+        recentReorders: [],
+      });
     }
 
     const supabase = createAdminClient();
 
-    // Use HEAD requests (count: 'exact', head: true) — returns a COUNT(*) from
-    // the database with zero rows transferred, so the server-side max-rows cap
-    // (1 000 on Supabase Cloud) never applies. One request per coupon type,
-    // all fired in parallel.
+    // Filter coupon types to user's assigned countries
+    const allowedTypes = COUPON_TYPES.filter((ct) => userCountries.includes(ct.country));
+    // Coupon types allowed for the user's country list that have distinct country values
+    const allowedTypesForCount = allowedTypes.filter((ct) => userCountries.includes(ct.country));
+
+    // Parallel: per-type stock counts (HEAD), reorder counts, recent reorders
     const [typeCountResults, reordersResult, recentResult] = await Promise.all([
       Promise.all(
-        COUPON_TYPES.map((ct) =>
+        allowedTypesForCount.map((ct) =>
           supabase
             .from('coupons')
             .select('*', { count: 'exact', head: true })
@@ -29,25 +49,38 @@ export async function GET() {
             })
         )
       ),
-      supabase.from('reorders').select('created_at'),
+      // Reorder totals scoped to user's countries' coupon types
       supabase
         .from('reorders')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5),
+        .select('created_at, coupon_type, user_id')
+        .in('coupon_type', allowedTypes.map((ct) => ct.type)),
+      // Recent reorders: admins see all in their countries; users see only their own
+      profile.role === 'admin'
+        ? supabase
+            .from('reorders')
+            .select('*')
+            .in('coupon_type', allowedTypes.map((ct) => ct.type))
+            .order('created_at', { ascending: false })
+            .limit(5)
+        : supabase
+            .from('reorders')
+            .select('*')
+            .eq('user_id', user.id)
+            .in('coupon_type', allowedTypes.map((ct) => ct.type))
+            .order('created_at', { ascending: false })
+            .limit(5),
     ]);
 
-    if (reordersResult.error)  throw reordersResult.error;
-    if (recentResult.error)    throw recentResult.error;
+    if (reordersResult.error) throw reordersResult.error;
+    if (recentResult.error)   throw recentResult.error;
 
-    const reorders      = reordersResult.data ?? [];
-    const recentReorders = recentResult.data  ?? [];
+    const reorders       = reordersResult.data ?? [];
+    const recentReorders = recentResult.data   ?? [];
 
-    const todayStr   = new Date().toISOString().slice(0, 10);
+    const todayStr     = new Date().toISOString().slice(0, 10);
     const totalIssued  = reorders.length;
     const issuedToday  = reorders.filter((r) => r.created_at.startsWith(todayStr)).length;
 
-    // Derive all aggregates from the per-type counts (no row fetching needed)
     const availableByType = typeCountResults
       .map(({ type, country, count }) => ({ type, country, available: count }))
       .sort((a, b) => b.available - a.available);
