@@ -111,3 +111,13 @@ CREATE POLICY "active_users_read_reorders" ON public.reorders
 
 CREATE POLICY "active_users_insert_reorders" ON public.reorders
   FOR INSERT WITH CHECK (public.get_my_profile_field('status') = 'active');
+
+-- ── Sequence & table grants ───────────────────────────────────
+-- service_role bypasses RLS but still needs PostgreSQL object-level
+-- privileges on sequences created by BIGSERIAL columns.
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+
+-- Ensure full table access for service_role (used by admin client in API routes)
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
