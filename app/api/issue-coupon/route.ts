@@ -6,26 +6,31 @@ import type { IssueCouponRequest } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
-    // Identify the caller via their session cookie
+    // ── Auth ───────────────────────────────────────────────────
     const sessionClient = await createClient();
     const { data: { user } } = await sessionClient.auth.getUser();
     if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized.' }, { status: 401 });
     }
 
-    // All DB queries use the admin client (bypasses RLS, avoids recursive policy errors)
     const supabase = createAdminClient();
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileErr } = await supabase
       .from('user_profiles')
       .select('name, status')
       .eq('id', user.id)
       .single();
 
+    if (profileErr) {
+      console.error('profile fetch error:', profileErr);
+      return NextResponse.json({ success: false, error: 'Could not verify account.' }, { status: 500 });
+    }
+
     if (!profile || profile.status !== 'active') {
       return NextResponse.json({ success: false, error: 'Access denied.' }, { status: 403 });
     }
 
+    // ── Parse body ─────────────────────────────────────────────
     const body: IssueCouponRequest = await req.json();
 
     // ── Validation ─────────────────────────────────────────────
@@ -36,19 +41,21 @@ export async function POST(req: NextRequest) {
     } else if (!COUPON_TYPES.find((ct) => ct.type === body.couponType)) {
       errors.couponType = 'Invalid coupon type.';
     }
-    if (!body.orderNumber?.trim())  errors.orderNumber  = 'Order number is required.';
-    if (!body.reason?.trim())       errors.reason       = 'Reason is required.';
-    else if (body.reason.trim().length < 50)
-      errors.reason = `Reason must be at least 50 characters (currently ${body.reason.trim().length}).`;
+    if (!body.orderNumber?.trim())     errors.orderNumber     = 'Order number is required.';
     if (!body.problemSource?.trim())   errors.problemSource   = 'Problem source is required.';
     if (!body.problemCategory?.trim()) errors.problemCategory = 'Problem category is required.';
+    if (!body.reason?.trim()) {
+      errors.reason = 'Reason is required.';
+    } else if (body.reason.trim().length < 50) {
+      errors.reason = `At least 50 characters required (${body.reason.trim().length}/50).`;
+    }
 
     if (Object.keys(errors).length > 0) {
       return NextResponse.json({ success: false, errors }, { status: 400 });
     }
 
-    // ── Atomic coupon assignment ────────────────────────────────
-    const { data: available } = await supabase
+    // ── Find an available coupon ────────────────────────────────
+    const { data: available, error: couponErr } = await supabase
       .from('coupons')
       .select('id, code')
       .eq('type', body.couponType)
@@ -56,14 +63,15 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
 
-    if (!available) {
+    if (couponErr || !available) {
+      console.error('coupon fetch error:', couponErr);
       return NextResponse.json(
-        { success: false, error: 'No unused coupon codes available for this type. Please contact an admin.' },
+        { success: false, error: 'No unused coupon codes available for this type. Please contact an admin to import more.' },
         { status: 409 }
       );
     }
 
-    const now = new Date().toISOString();
+    // ── Insert reorder record ──────────────────────────────────
     const requestedBy = profile.name || user.email || 'Unknown';
 
     const { data: reorder, error: reorderError } = await supabase
@@ -71,7 +79,7 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id:          user.id,
         requested_by:     requestedBy,
-        coupon_id:        available.id,
+        coupon_id:        Number(available.id),
         coupon_code:      available.code,
         coupon_type:      body.couponType,
         order_number:     body.orderNumber.trim(),
@@ -84,18 +92,31 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (reorderError || !reorder) {
-      console.error('reorder insert error:', reorderError);
-      return NextResponse.json({ success: false, error: 'Internal server error.' }, { status: 500 });
+      console.error('reorder insert error:', JSON.stringify(reorderError));
+      // Surface the DB error message to aid debugging (internal tool)
+      const detail = reorderError?.message ?? 'Unknown error';
+      const code   = reorderError?.code   ?? '';
+      return NextResponse.json(
+        { success: false, error: `Failed to create reorder record. (${code}: ${detail})` },
+        { status: 500 }
+      );
     }
 
-    // Mark coupon used — atomic: only succeeds if still unused
-    const { count } = await supabase
+    // ── Mark coupon as used (atomic: only succeeds if still unused) ─
+    const { data: updatedRows, error: updateError } = await supabase
       .from('coupons')
-      .update({ is_used: true, used_at: now, assigned_reorder_id: reorder.id })
-      .eq('id', available.id)
-      .eq('is_used', false);
+      .update({ is_used: true, used_at: new Date().toISOString(), assigned_reorder_id: Number(reorder.id) })
+      .eq('id', Number(available.id))
+      .eq('is_used', false)
+      .select('id');
 
-    if (count === 0) {
+    if (updateError) {
+      // Log but don't fail — reorder is already saved; coupon will be cleaned up manually
+      console.error('coupon update error:', JSON.stringify(updateError));
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      // Coupon was claimed by a concurrent request — roll back the reorder
       await supabase.from('reorders').delete().eq('id', reorder.id);
       return NextResponse.json(
         { success: false, error: 'Coupon was just claimed by another request. Please try again.' },
@@ -104,8 +125,10 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, reorder });
+
   } catch (err) {
-    console.error('issue-coupon error:', err);
-    return NextResponse.json({ success: false, error: 'Internal server error.' }, { status: 500 });
+    console.error('issue-coupon unexpected error:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ success: false, error: `Unexpected error: ${message}` }, { status: 500 });
   }
 }
