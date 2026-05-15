@@ -75,24 +75,19 @@ BEGIN
   END LOOP;
 END $$;
 
--- ── BLOCK 3: Australia (9 types × 100 codes = 900 rows) ──────
+-- ── BLOCK 3: Thailand (4 types × 50 codes = 200 rows) ───────
 DO $$
 DECLARE
   chars CONSTANT TEXT := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   sfx TEXT; cd TEXT; i INT; j INT; rec RECORD;
 BEGIN
   FOR rec IN (SELECT * FROM (VALUES
-    ('GGP-AU-AUD5',  'GGP AU AUD5',     'AU',   5::NUMERIC, 'fixed'),
-    ('GGP-AU-AUD10', 'GGP AU AUD10',    'AU',  10::NUMERIC, 'fixed'),
-    ('GGP-AU-AUD20', 'GGP AU AUD20',    'AU',  20::NUMERIC, 'fixed'),
-    ('GGP-AU-AUD40', 'GGP AU AUD40',    'AU',  40::NUMERIC, 'fixed'),
-    ('GGP-AU-10P',   'GGP AU 10%',      'AU',  10::NUMERIC, 'percentage'),
-    ('GGP-AU-20P',   'GGP AU 20%',      'AU',  20::NUMERIC, 'percentage'),
-    ('GGP-AU-RO',    'GGP AU Re-order', 'AU', 100::NUMERIC, 'percentage'),
-    ('GGP-AU-CLM',   'GGP AU Claim',    'AU',   0::NUMERIC, 'fixed'),
-    ('GGP-AU-NC',    'New Customer AU', 'AU',   0::NUMERIC, 'fixed')
+    ('GGP-TH-200',  'GGP TH 200',  'TH',  200::NUMERIC, 'fixed'),
+    ('GGP-TH-300',  'GGP TH 300',  'TH',  300::NUMERIC, 'fixed'),
+    ('GGP-TH-500',  'GGP TH 500',  'TH',  500::NUMERIC, 'fixed'),
+    ('GGP-TH-1000', 'GGP TH 1000', 'TH', 1000::NUMERIC, 'fixed')
   ) AS t(prefix, ctype, country, dval, dtype)) LOOP
-    FOR i IN 1..100 LOOP
+    FOR i IN 1..50 LOOP
       sfx := '';
       FOR j IN 1..6 LOOP
         sfx := sfx || substr(chars, (floor(random() * 32) + 1)::INT, 1);

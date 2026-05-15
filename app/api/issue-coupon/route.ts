@@ -3,9 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { COUPON_TYPES } from '@/lib/constants';
 import { resolveCountries } from '@/lib/supabase/get-session-profile';
+import { ALL_COUNTRIES } from '@/lib/constants';
 import type { IssueCouponRequest } from '@/lib/types';
-
-const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
 
 export async function POST(req: NextRequest) {
   try {

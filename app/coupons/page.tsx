@@ -8,7 +8,7 @@ import type { CouponTypeInfo } from '@/lib/types';
 const COUNTRY_ACCENT: Record<string, { badge: string; ring: string; dot: string }> = {
   MY: { badge: 'bg-violet-100 text-violet-700', ring: 'hover:ring-violet-300', dot: 'bg-violet-400' },
   SG: { badge: 'bg-blue-100 text-blue-700',     ring: 'hover:ring-blue-300',   dot: 'bg-blue-400'   },
-  AU: { badge: 'bg-amber-100 text-amber-700',   ring: 'hover:ring-amber-300',  dot: 'bg-amber-400'  },
+  TH: { badge: 'bg-rose-100 text-rose-700',     ring: 'hover:ring-rose-300',   dot: 'bg-rose-400'   },
 };
 
 function CouponCard({ ct }: { ct: CouponTypeInfo }) {
@@ -41,14 +41,16 @@ function CouponCard({ ct }: { ct: CouponTypeInfo }) {
 
       {ct.discountValue > 0 && (
         <div className="pt-2.5 border-t border-slate-100">
-          <span className="text-base font-bold text-slate-800">
+          <p className="text-base font-bold text-slate-800 leading-none">
             {ct.discountType === 'fixed'
-              ? `${ct.currency ?? ''}${ct.discountValue}`
-              : `${ct.discountValue}%`}
-          </span>
-          <span className="text-xs text-slate-400 ml-1">
-            {ct.discountType === 'fixed' ? 'off' : 'discount'}
-          </span>
+              ? `${ct.currency ?? ''}${ct.discountValue} off`
+              : `${ct.discountValue}% off`}
+          </p>
+          {ct.minPurchase != null && (
+            <p className="text-[11px] text-slate-400 mt-1 leading-none">
+              Min. purchase {ct.currency ?? ''}{ct.minPurchase} before tax
+            </p>
+          )}
         </div>
       )}
     </Link>

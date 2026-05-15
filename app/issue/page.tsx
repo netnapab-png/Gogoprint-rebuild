@@ -12,9 +12,12 @@ export default async function IssuePage({ searchParams }: PageProps) {
   const couponType = COUPON_TYPE_MAP[rawType];
   if (!couponType) notFound();
 
-  const countryLabel =
-    couponType.country === 'MY' ? '🇲🇾 Malaysia' :
-    couponType.country === 'SG' ? '🇸🇬 Singapore' : '🇦🇺 Australia';
+  const COUNTRY_LABELS: Record<string, string> = {
+    MY: '🇲🇾 Malaysia',
+    SG: '🇸🇬 Singapore',
+    TH: '🇹🇭 Thailand',
+  };
+  const countryLabel = COUNTRY_LABELS[couponType.country] ?? couponType.country;
 
   return (
     <div className="flex-1 flex flex-col animate-fade-in">
@@ -59,6 +62,14 @@ export default async function IssuePage({ searchParams }: PageProps) {
                     {couponType.discountType === 'fixed'
                       ? `${couponType.currency ?? ''}${couponType.discountValue} off`
                       : `${couponType.discountValue}% off`}
+                  </span>
+                </div>
+              )}
+              {couponType.minPurchase != null && (
+                <div className="mt-2 bg-slate-50 rounded-lg px-3 py-2.5 flex items-center justify-between">
+                  <span className="text-xs text-slate-500 font-medium">Min. purchase</span>
+                  <span className="text-xs font-semibold text-slate-700">
+                    {couponType.currency ?? ''}{couponType.minPurchase} before tax
                   </span>
                 </div>
               )}

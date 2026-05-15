@@ -29,8 +29,8 @@ export async function getSessionProfile(): Promise<SessionResult | null> {
 }
 
 // Admins with no countries assigned fall back to all countries (migration safety).
-export function resolveCountries(profile: SessionProfile, allCountries: string[]): string[] {
+export function resolveCountries(profile: SessionProfile, allCountries: readonly string[]): string[] {
   if (profile.countries.length > 0) return profile.countries;
-  if (profile.role === 'admin') return allCountries;
+  if (profile.role === 'admin') return [...allCountries];
   return [];
 }

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
-const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
-const COUNTRY_FLAG: Record<string, string> = { MY: '🇲🇾', SG: '🇸🇬', AU: '🇦🇺' };
+const ALL_COUNTRIES = ['MY', 'SG', 'TH'];
+const COUNTRY_FLAG: Record<string, string> = { MY: '🇲🇾', SG: '🇸🇬', TH: '🇹🇭' };
 
 interface UserProfile {
   id: string;

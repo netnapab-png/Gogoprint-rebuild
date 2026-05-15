@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSessionProfile, resolveCountries } from '@/lib/supabase/get-session-profile';
-import { COUPON_TYPES } from '@/lib/constants';
-
-const ALL_COUNTRIES = ['MY', 'SG', 'AU'];
+import { COUPON_TYPES, ALL_COUNTRIES } from '@/lib/constants';
 
 function escape(val: string | null | undefined): string {
   const s = val ?? '';

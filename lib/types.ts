@@ -35,6 +35,7 @@ export interface CouponTypeInfo {
   discountValue: number;
   discountType: 'fixed' | 'percentage';
   currency?: string;
+  minPurchase?: number;
 }
 
 export interface IssueCouponRequest {

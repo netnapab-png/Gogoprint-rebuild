@@ -15,7 +15,7 @@ interface TypeStock {
 const COUNTRY_COLOR: Record<string, string> = {
   MY: '#7C3AED', // violet — matches sidebar accent
   SG: '#2563EB', // blue
-  AU: '#D97706', // amber
+  TH: '#E11D48', // rose — Thailand
 };
 
 const REFRESH_MS = 30_000;
@@ -108,7 +108,7 @@ export default function CouponStockChart() {
             {Object.entries(COUNTRY_COLOR).map(([country, color]) => (
               <span key={country} className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
                 <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: color }} />
-                {country === 'MY' ? 'Malaysia' : country === 'SG' ? 'Singapore' : 'Australia'}
+                {country === 'MY' ? 'Malaysia' : country === 'SG' ? 'Singapore' : 'Thailand'}
               </span>
             ))}
           </div>
