@@ -14,6 +14,7 @@ interface Stats {
   availableByCountry: Record<string, number>;
   lowStockTypes:      { type: string; count: number }[];
   recentReorders:     Reorder[];
+  userCountries:      string[];
 }
 
 function greeting() {
@@ -180,13 +181,12 @@ export default function DashboardPage() {
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider leading-none mb-2">By country</p>
                 <div className="space-y-1.5">
-                  {(['MY', 'SG', 'TH'] as const).map((c) => {
+                  {stats.userCountries.map((c) => {
                     const n = stats.availableByCountry[c] ?? 0;
+                    const flag = c === 'MY' ? '🇲🇾' : c === 'SG' ? '🇸🇬' : c === 'TH' ? '🇹🇭' : '🏳️';
                     return (
                       <div key={c} className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-slate-500">
-                          {c === 'MY' ? '🇲🇾 MY' : c === 'SG' ? '🇸🇬 SG' : '🇹🇭 TH'}
-                        </span>
+                        <span className="text-xs text-slate-500">{flag} {c}</span>
                         <span className={`text-xs font-bold tabular-nums ${n < 5 ? 'text-red-500' : 'text-slate-800'}`}>{n}</span>
                       </div>
                     );

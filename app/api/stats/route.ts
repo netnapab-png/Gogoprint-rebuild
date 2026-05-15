@@ -22,6 +22,7 @@ export async function GET() {
         availableByType: [],
         lowStockTypes: [],
         recentReorders: [],
+        userCountries: [],
       });
     }
 
@@ -102,6 +103,7 @@ export async function GET() {
       availableByType,
       lowStockTypes,
       recentReorders,
+      userCountries,
     });
   } catch (err) {
     console.error('stats error:', err);

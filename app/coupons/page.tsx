@@ -76,11 +76,11 @@ export default function CouponsPage() {
   const knownCodes = new Set(COUNTRIES.map((c) => c.code));
   const otherTypes = COUPON_TYPES.filter((ct) => !knownCodes.has(ct.country));
 
-  // While loading, show all countries (spinner-free, layout stable)
   const visibleCountries = userCountries === null
-    ? COUNTRIES
+    ? []
     : COUNTRIES.filter((c) => userCountries.includes(c.code));
 
+  const loading     = userCountries === null;
   const noCountries = userCountries !== null && userCountries.length === 0;
 
   return (
@@ -100,7 +100,33 @@ export default function CouponsPage() {
 
       <main className="flex-1 px-6 lg:px-8 py-7 max-w-6xl w-full mx-auto">
 
-        {noCountries ? (
+        {loading ? (
+          /* Skeleton — shown until country permissions resolve */
+          <div className="space-y-9">
+            {[1, 2].map((n) => (
+              <section key={n}>
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-5 h-4 bg-slate-100 rounded animate-pulse" />
+                  <div className="h-3 bg-slate-100 rounded w-24 animate-pulse" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="bg-white rounded-xl ring-1 ring-slate-900/5 shadow-sm p-4 flex flex-col gap-3 animate-pulse">
+                      <div className="h-5 bg-slate-100 rounded w-10" />
+                      <div className="space-y-1.5">
+                        <div className="h-3.5 bg-slate-100 rounded w-3/4" />
+                        <div className="h-3 bg-slate-100 rounded w-1/2" />
+                      </div>
+                      <div className="pt-2.5 border-t border-slate-100">
+                        <div className="h-5 bg-slate-100 rounded w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : noCountries ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-14 h-14 bg-amber-100 rounded-2xl flex items-center justify-center mb-4">
               <svg className="w-7 h-7 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
